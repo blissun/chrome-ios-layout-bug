@@ -1,0 +1,396 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Chrome iOS fixed-bottom bug repro</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --brand: #6b46ff;
+      }
+      * {
+        box-sizing: border-box;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, system-ui, sans-serif;
+        background: #fff;
+        color: #111;
+      }
+
+      /* Sticky top header (search-bar-like) */
+      .top-header {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.8);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        padding: 12px 16px;
+        border-bottom: 2px dashed #f06292;
+      }
+      .top-header .bar {
+        display: block;
+        background: #ffe0b2;
+        border: 2px solid #e65100;
+        border-radius: 8px;
+        padding: 10px 12px;
+        font-weight: 600;
+        color: #e65100;
+      }
+
+      /* Fixed bottom tabbar */
+      .tabbar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 200;
+        background: #c8e6c9;
+        border-top: 3px solid #1b5e20;
+        padding: 14px 16px;
+        padding-bottom: calc(14px + env(safe-area-inset-bottom));
+        display: flex;
+        justify-content: space-around;
+        font-weight: 700;
+        color: #1b5e20;
+      }
+
+      /* Viewport-unit markers */
+      .dvh-marker {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: calc(100dvh - 2px);
+        height: 2px;
+        background: #ff1744;
+        z-index: 199;
+        pointer-events: none;
+      }
+      .svh-marker {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: calc(100svh - 2px);
+        height: 2px;
+        background: #00b8d4;
+        z-index: 199;
+        pointer-events: none;
+      }
+      .lvh-marker {
+        position: fixed;
+        left: 0;
+        right: 0;
+        top: calc(100lvh - 2px);
+        height: 2px;
+        background: #7b1fa2;
+        z-index: 199;
+        pointer-events: none;
+      }
+
+      /* Debug overlay */
+      .debug {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 9999;
+        background: rgba(0, 0, 0, 0.9);
+        color: #fff;
+        font: 10px/1.35 ui-monospace, Menlo, monospace;
+        padding: 10px 12px;
+        border-radius: 10px;
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+        max-width: 90vw;
+        pointer-events: auto;
+      }
+      .debug .metrics {
+        word-break: break-all;
+        white-space: pre-wrap;
+      }
+      .debug .controls {
+        display: flex;
+        gap: 4px;
+        align-items: center;
+        margin-top: 6px;
+      }
+      .debug button {
+        background: rgba(255, 255, 255, 0.15);
+        color: #fff;
+        border: none;
+        border-radius: 4px;
+        padding: 3px 8px;
+        font: inherit;
+        font-weight: 700;
+      }
+      .debug button.saved {
+        background: #43a047;
+      }
+      .debug button.copy {
+        background: #1e88e5;
+        margin-left: 4px;
+      }
+      .debug .status {
+        font-size: 10px;
+        margin-left: 4px;
+      }
+      .debug .saved-list {
+        margin-top: 6px;
+      }
+      .debug .saved-list div {
+        word-break: break-all;
+        white-space: pre-wrap;
+      }
+      .debug .saved-list .idx {
+        color: #ffeb3b;
+      }
+
+      /* Scroll filler */
+      .filler {
+        padding: 16px;
+      }
+      .filler section {
+        background: #f5f5f5;
+        border-radius: 12px;
+        padding: 20px;
+        margin-bottom: 16px;
+        min-height: 220px;
+      }
+      .filler h2 {
+        margin: 0 0 8px;
+        font-size: 16px;
+      }
+      .filler p {
+        margin: 0;
+        color: #555;
+        font-size: 14px;
+      }
+      .legend {
+        position: fixed;
+        right: 12px;
+        top: 60%;
+        z-index: 201;
+        background: rgba(0, 0, 0, 0.6);
+        color: #fff;
+        font: 10px ui-monospace, Menlo, monospace;
+        padding: 6px 8px;
+        border-radius: 4px;
+        pointer-events: none;
+      }
+      .legend div { display: flex; align-items: center; gap: 6px; }
+      .legend i { display: inline-block; width: 12px; height: 2px; }
+    </style>
+  </head>
+  <body>
+    <header class="top-header">
+      <div class="bar">STICKY TOP (search bar)</div>
+    </header>
+
+    <main class="filler">
+      <section>
+        <h2>Chrome iOS fixed-bottom bug repro</h2>
+        <p>
+          Scroll up and down to trigger the URL bar animation. Compare
+          the green fixed bottom bar against the red (100dvh), cyan
+          (100svh), and purple (100lvh) viewport-unit markers.
+        </p>
+        <p>
+          Key fingerprint: tap the URL bar then cancel &mdash; the
+          layout snaps back into alignment. Only Chrome's native code
+          can trigger that invalidation path; nothing at the web layer
+          reproduces it.
+        </p>
+      </section>
+    </main>
+
+    <div class="dvh-marker"></div>
+    <div class="svh-marker"></div>
+    <div class="lvh-marker"></div>
+
+    <nav class="tabbar">
+      <span>HOME</span>
+      <span>SEARCH</span>
+      <span>FEED</span>
+      <span>ME</span>
+    </nav>
+
+    <div class="legend">
+      <div><i style="background:#ff1744"></i>100dvh</div>
+      <div><i style="background:#00b8d4"></i>100svh</div>
+      <div><i style="background:#7b1fa2"></i>100lvh</div>
+      <div><i style="background:#1b5e20"></i>tabbar top</div>
+    </div>
+
+    <div class="debug" id="debug">
+      <div class="metrics" id="metrics">(measuring...)</div>
+      <div class="controls">
+        <button data-slot="0">1</button>
+        <button data-slot="1">2</button>
+        <button data-slot="2">3</button>
+        <button data-slot="3">4</button>
+        <button class="copy" id="copyBtn">copy</button>
+        <span class="status" id="copyStatus"></span>
+      </div>
+      <div class="saved-list" id="savedList"></div>
+    </div>
+
+    <script>
+      (function () {
+        var main = document.querySelector('.filler');
+        var labels = [
+          'Section A', 'Section B', 'Section C', 'Section D',
+          'Section E', 'Section F', 'Section G', 'Section H',
+          'Section I', 'Section J', 'Section K', 'Section L',
+        ];
+        for (var i = 0; i < labels.length; i++) {
+          var s = document.createElement('section');
+          var h = document.createElement('h2');
+          h.textContent = labels[i];
+          var p = document.createElement('p');
+          p.textContent =
+            'Filler content. Scroll to trigger the URL bar animation and watch the fixed bottom bar misalign from the viewport-unit markers.';
+          s.appendChild(h);
+          s.appendChild(p);
+          main.appendChild(s);
+        }
+      })();
+
+      function mkProbe(cssValue, prop) {
+        var el = document.createElement('div');
+        el.style.cssText =
+          'position:fixed;top:0;left:0;width:0;visibility:hidden;pointer-events:none;' +
+          prop + ':' + cssValue + ';';
+        document.body.appendChild(el);
+        return el;
+      }
+      var dvhEl = mkProbe('100dvh', 'height');
+      var svhEl = mkProbe('100svh', 'height');
+      var lvhEl = mkProbe('100lvh', 'height');
+      var satEl = mkProbe('env(safe-area-inset-top)', 'paddingTop');
+      var sabEl = mkProbe('env(safe-area-inset-bottom)', 'paddingBottom');
+
+      var tabbar = document.querySelector('.tabbar');
+      var metricsEl = document.getElementById('metrics');
+      var savedListEl = document.getElementById('savedList');
+      var copyStatusEl = document.getElementById('copyStatus');
+
+      var saved = [null, null, null, null];
+      var current = null;
+
+      function readMetrics() {
+        var rect = tabbar.getBoundingClientRect();
+        var vv = window.visualViewport;
+        current = {
+          iw: window.innerWidth,
+          ih: window.innerHeight,
+          ch: document.documentElement.clientHeight,
+          vvH: vv ? Math.round(vv.height * 10) / 10 : 0,
+          vvTop: vv ? Math.round(vv.offsetTop * 10) / 10 : 0,
+          sy: Math.round(window.scrollY),
+          sab: getComputedStyle(sabEl).paddingBottom,
+          sat: getComputedStyle(satEl).paddingTop,
+          dvh: Math.round(dvhEl.getBoundingClientRect().height),
+          svh: Math.round(svhEl.getBoundingClientRect().height),
+          lvh: Math.round(lvhEl.getBoundingClientRect().height),
+          tb: Math.round(rect.bottom * 10) / 10,
+        };
+        metricsEl.textContent = format(current);
+      }
+
+      function format(m) {
+        if (!m) return '(empty)';
+        return (
+          'iw:' + m.iw +
+          ' ih:' + m.ih +
+          ' ch:' + m.ch +
+          ' vv:' + m.vvH + '+' + m.vvTop +
+          ' sy:' + m.sy +
+          ' sab:' + m.sab +
+          ' sat:' + m.sat +
+          ' dvh:' + m.dvh +
+          ' svh:' + m.svh +
+          ' lvh:' + m.lvh +
+          ' tb:' + m.tb
+        );
+      }
+
+      function renderSaved() {
+        while (savedListEl.firstChild) savedListEl.removeChild(savedListEl.firstChild);
+        var any = false;
+        for (var i = 0; i < saved.length; i++) {
+          if (!saved[i]) continue;
+          any = true;
+          var row = document.createElement('div');
+          var idx = document.createElement('span');
+          idx.className = 'idx';
+          idx.textContent = '[' + (i + 1) + '] ';
+          row.appendChild(idx);
+          row.appendChild(document.createTextNode(format(saved[i])));
+          savedListEl.appendChild(row);
+        }
+        savedListEl.style.display = any ? 'block' : 'none';
+        var btns = document.querySelectorAll('.debug button[data-slot]');
+        for (var j = 0; j < btns.length; j++) {
+          var k = parseInt(btns[j].getAttribute('data-slot'), 10);
+          btns[j].classList.toggle('saved', !!saved[k]);
+        }
+      }
+
+      var slotBtns = document.querySelectorAll('.debug button[data-slot]');
+      for (var b = 0; b < slotBtns.length; b++) {
+        (function (btn) {
+          btn.addEventListener('click', function () {
+            var i = parseInt(btn.getAttribute('data-slot'), 10);
+            saved[i] = current;
+            renderSaved();
+          });
+        })(slotBtns[b]);
+      }
+
+      document.getElementById('copyBtn').addEventListener('click', function () {
+        var lines = [];
+        for (var i = 0; i < saved.length; i++) {
+          lines.push('[' + (i + 1) + '] ' + (saved[i] ? format(saved[i]) : '(empty)'));
+        }
+        var text = lines.join('\n');
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.cssText = 'position:fixed;top:0;left:0;opacity:0;pointer-events:none;';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        var ok = false;
+        try {
+          ok = document.execCommand('copy');
+        } catch (e) {
+          ok = false;
+        }
+        ta.remove();
+        copyStatusEl.textContent = ok ? 'copied!' : 'copy failed';
+        setTimeout(function () {
+          copyStatusEl.textContent = '';
+        }, 1500);
+      });
+
+      var rafId = 0;
+      function schedule() {
+        if (rafId) return;
+        rafId = requestAnimationFrame(function () {
+          rafId = 0;
+          readMetrics();
+        });
+      }
+
+      readMetrics();
+      window.addEventListener('scroll', schedule, { passive: true });
+      window.addEventListener('resize', schedule);
+      if (window.visualViewport) {
+        window.visualViewport.addEventListener('scroll', schedule);
+        window.visualViewport.addEventListener('resize', schedule);
+      }
+    </script>
+  </body>
+</html>
