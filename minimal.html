@@ -15,6 +15,7 @@
       }
       html { overflow-x: hidden; }
 
+      /* Sticky top header */
       .top {
         position: sticky;
         top: 0;
@@ -35,6 +36,7 @@
         color: #e65100;
       }
 
+      /* Fixed bottom tabbar */
       .bar {
         position: fixed;
         bottom: 0;
@@ -52,7 +54,8 @@
         color: #1b5e20;
       }
 
-      /* Viewport unit markers */
+      /* Viewport unit markers — in Chrome iOS only the svh (cyan) marker remains visible,
+         confirming that fixed-layer painting is clipped at y=svh from layout top. */
       .m {
         position: fixed;
         left: 0;
@@ -61,26 +64,33 @@
         z-index: 199;
         pointer-events: none;
       }
-      .m-d { top: calc(100dvh - 2px); background: #ff1744; }
-      .m-s { top: calc(100svh - 2px); background: #00b8d4; }
-      .m-l { top: calc(100lvh - 2px); background: #7b1fa2; }
+      .m-d { top: calc(100dvh - 2px); background: #ff1744; } /* dvh */
+      .m-s { top: calc(100svh - 2px); background: #00b8d4; } /* svh */
+      .m-l { top: calc(100lvh - 2px); background: #7b1fa2; } /* lvh */
 
+      /* Long filler section so the page is tall enough to trigger the URL bar animation */
       main { padding: 16px; }
-      section {
+      .filler {
+        min-height: 3000px;
         background: #f5f5f5;
         border-radius: 12px;
         padding: 16px;
-        margin-bottom: 16px;
       }
-      section h2 { margin: 0 0 8px; font-size: 16px; }
-      section .wrap {
+      .filler h2 { margin: 0 0 12px; font-size: 16px; }
+      .filler p { margin: 0 0 16px; color: #555; font-size: 14px; }
+
+      /* The single critical image. Wrapped to give it a visible box.
+         The exact attribute combination on the <img> below is what triggers
+         the bug on iOS Chrome. None of the attributes can be removed. */
+      .imgwrap {
         position: relative;
         width: 100%;
         aspect-ratio: 16 / 9;
         border-radius: 8px;
         overflow: hidden;
+        background: #ddd;
       }
-      section img {
+      .imgwrap img {
         position: absolute;
         inset: 0;
         width: 100%;
@@ -92,47 +102,46 @@
   <body>
     <header class="top"><span>STICKY TOP</span></header>
 
-    <main id="main"></main>
+    <main>
+      <section class="filler">
+        <h2>Chrome iOS fixed-layer stale bug</h2>
+        <p>
+          On iPhone Chrome iOS (not Safari iOS), scroll this page after first
+          load. The fixed bottom tabbar drifts out of alignment with the
+          visible viewport bottom, and only the cyan (100svh) marker is
+          visible — the red (100dvh) and purple (100lvh) markers are clipped
+          out by the fixed-layer paint boundary.
+        </p>
+        <p>
+          Tap the URL bar and cancel to force a compositor invalidation — the
+          layout snaps back into alignment instantly.
+        </p>
+
+        <div class="imgwrap">
+          <!--
+            Minimum reproducer. ALL FOUR of the following must be present on
+            the same <img> element for the bug to trigger:
+              1. src attribute
+              2. srcset attribute (directly on <img>, not on a <picture>/<source>)
+              3. decoding="async"
+              4. loading="lazy"
+            The image does not need to actually load — a data: URI works.
+          -->
+          <img
+            src="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+            srcset="data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkAAIAAAoAAv/lxKUAAAAASUVORK5CYII="
+            alt="minimum repro image"
+            decoding="async"
+            loading="lazy"
+          />
+        </div>
+      </section>
+    </main>
 
     <div class="m m-d"></div>
     <div class="m m-s"></div>
     <div class="m m-l"></div>
 
     <nav class="bar">FIXED BOTTOM TABBAR</nav>
-
-    <script>
-      // Generate 30 image sections. Each <img> carries the exact 3-attribute
-      // combination that reproduces the bug on iOS Chrome (not Safari iOS):
-      //   - srcset with multiple w-descriptor candidates
-      //   - decoding="async"
-      //   - loading="lazy"
-      (function () {
-        var main = document.getElementById('main');
-        var widths = [640, 750, 828, 1080, 1200, 1920];
-        for (var i = 0; i < 30; i++) {
-          var s = document.createElement('section');
-          var h = document.createElement('h2');
-          h.textContent = 'Section ' + (i + 1);
-          var wrap = document.createElement('div');
-          wrap.className = 'wrap';
-          var img = document.createElement('img');
-          img.alt = 'Section ' + (i + 1);
-          img.src = 'https://picsum.photos/seed/crios-' + i + '/640/360';
-          var parts = [];
-          for (var j = 0; j < widths.length; j++) {
-            var w = widths[j];
-            var h2 = Math.round((w * 9) / 16);
-            parts.push('https://picsum.photos/seed/crios-' + i + '/' + w + '/' + h2 + ' ' + w + 'w');
-          }
-          img.srcset = parts.join(', ');
-          img.decoding = 'async';
-          img.loading = 'lazy';
-          wrap.appendChild(img);
-          s.appendChild(h);
-          s.appendChild(wrap);
-          main.appendChild(s);
-        }
-      })();
-    </script>
   </body>
 </html>

@@ -4,16 +4,19 @@
 
 - **증상**: iOS Chrome에서 첫 페이지 로드 직후 스크롤할 때, `position: fixed; bottom: 0` 요소가 visible viewport 하단이 아닌 **layout 좌표계의 `svh` 지점에 stale 상태로 박힘**. URL바 애니메이션이 끝나도 자동으로 동기화되지 않음.
 - **정상화 경로**: URL바를 탭한 후 취소로 복귀 → 즉시 정상화 (Chrome iOS 네이티브 코드가 WKWebView에 invalidation을 트리거하는 내부 경로).
-- **최소 재현 조건** (3-way interaction):
+- **최소 재현 조건** (4-property interaction):
   ```html
   <img
-    src="..."
-    srcset="...640w, ...750w, ...828w, ...1080w, ...1200w, ...1920w"
+    src="data:,"
+    srcset="data:,"
     decoding="async"
     loading="lazy"
   >
   ```
-  세 속성이 **모두 동시에** 있어야 재현. 하나라도 빠지면 재현 안 됨.
+  **네 속성이 모두 동시에** 있어야 재현. 어느 하나가 빠지면 재현 안 됨.
+  - `srcset`은 **반드시 `<img>` element에 직접** 선언돼야 함. `<picture>` 안의 `<source srcset>`로 옮기면 재현 안 됨.
+  - 이미지 실제 로드는 불필요 — data URI도 OK. srcset candidate 개수도 1개로 충분.
+  - 이미지 1개만 있어도 충분 (페이지 높이만 URL바 애니메이션을 트리거할 수 있을 만큼 확보되면 됨).
 - **Safari iOS는 정상**. 동일 HTML인데 Chrome iOS만 깨짐 → WebKit 엔진 자체의 문제가 아니라 **Chrome iOS가 WKWebView 위에 올리는 자체 네이티브 코드의 버그**.
 - **영향**: `next/image`의 기본 동작이 정확히 이 3-way 속성 조합을 생성하므로, Next.js + iOS Chrome 사용자 상당수가 무의식적으로 영향받음.
 
@@ -74,30 +77,43 @@
 | 1 | `next/image` 기본 (srcset, sizes, decoding=async, loading=lazy 모두 포함) | ✅ |
 | 2 | `next/image` + `unoptimized` | ❌ |
 | 3 | plain `<img>` (src만) | ❌ |
-| 4 | plain `<img>` + srcset + sizes + decoding=async + loading=lazy | ✅ |
+| 4 | plain `<img>` + srcset(6 candidates) + sizes + decoding=async + loading=lazy | ✅ |
 | 5 | plain `<img>` + sizes + decoding + lazy (srcset 없음) | ❌ |
 | 6 | plain `<img>` + srcset + decoding + lazy (sizes 없음) | ✅ |
 | 7 | plain `<img>` + srcset only | ❌ |
 | 8 | plain `<img>` + srcset + loading=lazy (decoding 없음) | ❌ |
 | 9 | plain `<img>` + srcset + decoding=async (loading 없음) | ❌ |
-| 10 | plain `<img>` + srcset + decoding=async + loading=lazy | ✅ |
+| 10 | plain `<img>` + srcset(2 candidates) + decoding + lazy | ✅ |
+| 11 | plain `<img>` + srcset(1 entry w-descriptor) + decoding + lazy | ✅ |
+| 12 | plain `<img>` + srcset(1 entry x-descriptor) + decoding + lazy | ✅ |
+| 13 | plain `<img>` + srcset(URL only, no descriptor) + decoding + lazy | ✅ |
+| 14 | 단일 이미지 + 3000px 섹션 | ✅ |
+| 15 | `<img>` + data URI (src/srcset 동일 data URI) + decoding + lazy | ✅ |
+| 16 | `<img>` srcset만 (src 없음) + data URI + decoding + lazy | ❌ |
+| 17 | `<picture><source srcset><img src decoding lazy></picture>` + data URI | ❌ |
+| 18 | 명시적 `IntersectionObserver`가 div를 관찰 (`<img>` 없음) | ❌ |
 
 **결론**:
-- `sizes` 속성은 무관 (6번 vs 4번 비교).
-- `srcset`, `decoding="async"`, `loading="lazy"` **세 개가 동시에 있을 때만** 재현.
-- 어느 하나가 빠지면 즉시 재현 안 됨 → **3-way interaction**.
+- `sizes`, srcset candidate 개수, 실제 네트워크 로드, 이미지 개수, 섹션 개수는 **무관**.
+- **필수 조건 4가지**: `<img>` element에 `src` + `srcset` + `decoding="async"` + `loading="lazy"`이 모두 함께 존재.
+- `srcset`을 `<picture>` 안의 `<source>`로 옮기면 재현 안 됨 → HTMLImageElement의 inline srcset codepath 특정.
+- `<img>` 없이 IntersectionObserver만 사용하면 재현 안 됨 → lazy loading의 observer 경로가 아니라 **img element parsing/load scheduling** 쪽 버그.
 
-`next/image`의 기본 출력이 정확히 이 3개 속성을 포함하므로, 결과 #1과 #4가 일치한다.
+`next/image`의 기본 출력이 정확히 4개 조건을 전부 생성한다.
 
-### 3-way interaction의 해석
+### 4-property interaction의 해석
 
-세 속성이 결합해 만들어지는 런타임 패턴:
+처음에는 "이미지 로드/디코드 타이밍이 compositor와 섞여서 생기는 현상"이라는 해석이 자연스러웠지만, 다음 두 실험이 그 해석을 깼다:
 
-1. `loading="lazy"` → IntersectionObserver로 스크롤 중 이미지가 순차적으로 로드 요청된다. 로드 시점이 **URL바 애니메이션과 정확히 겹친다**.
-2. `srcset` → 브라우저가 로드 시점에 viewport-dependent candidate 선택을 수행한다. 후속 paint가 candidate URL 하나에 lock되기까지 타이밍이 분산된다.
-3. `decoding="async"` → 이미지 디코딩이 main thread를 벗어난다. 디코드 완료 시점이 **scroll/URL바 transition과 비동기적으로** 완료되며, compositor가 새 bitmap을 받아들이는 시점이 스크롤 프레임에 간헐적으로 끼어든다.
+- **Test 15**: `src`/`srcset`을 1×1 투명 PNG **data URI**로 교체 — 네트워크 요청 0, 디코드 사실상 즉시 완료. 그럼에도 재현됨. → **실제 이미지 로드/디코드는 버그의 필요 조건이 아님**.
+- **Test 18**: `<img>`를 제거하고 명시적 `IntersectionObserver`만 등록 — 재현 안 됨. → **lazy loading의 observer 경로 자체도 원인이 아님**.
+- **Test 17**: `<picture>` + `<source srcset>` 구조로 이동 — 재현 안 됨. → **`<source>` element 경로는 별개 codepath**이고, 문제는 **`<img>`에 srcset이 직접 선언됐을 때의 HTMLImageElement attribute parsing/layout scheduling**.
 
-이 세 메커니즘이 합쳐져 "스크롤 중에도 compositor가 새 이미지 레이어를 계속 받아들이는 상태"를 만들고, 그 와중에 iOS Chrome 네이티브 코드가 fixed 레이어의 viewport snapshot을 업데이트할 타이밍을 놓치는 것으로 추정된다.
+현재 가장 일관된 모델:
+
+> iOS Chrome의 HTMLImageElement 처리 코드는, `<img>` element 하나가 **src + srcset(direct) + decoding="async" + loading="lazy"** 네 attribute를 모두 가질 때 특정 내부 상태 플래그 조합에 들어간다. 그 상태에서 스크롤 기반 URL바 애니메이션이 끝날 때, Chrome iOS 네이티브 코드가 WKWebView fixed layer의 visual-viewport snapshot을 업데이트하는 경로를 **건너뛰거나 잘못된 시점에 호출**한다. URL바 탭 → 취소로 돌아오면 다른 native invalidation 경로가 호출되어 즉시 정상화된다.
+
+즉 버그의 핵심은 **image loading의 물리적 side-effect가 아니라, attribute 조합이 만드는 element state**이며, 이 state가 iOS Chrome 네이티브의 viewport/URL바 처리 코드와 잘못 상호작용한다는 가설이 가장 잘 맞는다.
 
 ---
 
