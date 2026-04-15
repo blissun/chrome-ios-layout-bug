@@ -1,8 +1,10 @@
-# Chrome iOS fixed-bottom bug repro
+# Chrome iOS layout bug repro
 
-Minimal standalone reproduction of the iOS Chrome (WKWebView) bug where
-`position: fixed; bottom: 0` elements drift out of alignment with the
-actual visible viewport while the URL bar is animating.
+Minimal standalone reproduction of the iOS Chrome (WKWebView) layout
+bug where `position: fixed` and `position: sticky` elements drift out
+of alignment with the actual visible viewport while the URL bar is
+animating. Both a top sticky header and a bottom fixed tabbar are
+included so you can observe the symmetric failure modes.
 
 ## What you see
 
