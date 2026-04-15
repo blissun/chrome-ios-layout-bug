@@ -1,0 +1,138 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>Chrome iOS fixed-layer stale bug (minimal)</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, system-ui, sans-serif;
+        background: #fff;
+        color: #111;
+      }
+      html { overflow-x: hidden; }
+
+      .top {
+        position: sticky;
+        top: 0;
+        z-index: 20;
+        background: rgba(255, 255, 255, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        padding: 12px 16px;
+        border-bottom: 2px dashed #f06292;
+      }
+      .top span {
+        display: inline-block;
+        background: #ffe0b2;
+        border: 2px solid #e65100;
+        border-radius: 8px;
+        padding: 8px 12px;
+        font-weight: 700;
+        color: #e65100;
+      }
+
+      .bar {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        z-index: 200;
+        height: 64px;
+        background: #c8e6c9;
+        border-top: 3px solid #1b5e20;
+        padding-bottom: env(safe-area-inset-bottom);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        color: #1b5e20;
+      }
+
+      /* Viewport unit markers */
+      .m {
+        position: fixed;
+        left: 0;
+        right: 0;
+        height: 2px;
+        z-index: 199;
+        pointer-events: none;
+      }
+      .m-d { top: calc(100dvh - 2px); background: #ff1744; }
+      .m-s { top: calc(100svh - 2px); background: #00b8d4; }
+      .m-l { top: calc(100lvh - 2px); background: #7b1fa2; }
+
+      main { padding: 16px; }
+      section {
+        background: #f5f5f5;
+        border-radius: 12px;
+        padding: 16px;
+        margin-bottom: 16px;
+      }
+      section h2 { margin: 0 0 8px; font-size: 16px; }
+      section .wrap {
+        position: relative;
+        width: 100%;
+        aspect-ratio: 16 / 9;
+        border-radius: 8px;
+        overflow: hidden;
+      }
+      section img {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+    </style>
+  </head>
+  <body>
+    <header class="top"><span>STICKY TOP</span></header>
+
+    <main id="main"></main>
+
+    <div class="m m-d"></div>
+    <div class="m m-s"></div>
+    <div class="m m-l"></div>
+
+    <nav class="bar">FIXED BOTTOM TABBAR</nav>
+
+    <script>
+      // Generate 30 image sections. Each <img> carries the exact 3-attribute
+      // combination that reproduces the bug on iOS Chrome (not Safari iOS):
+      //   - srcset with multiple w-descriptor candidates
+      //   - decoding="async"
+      //   - loading="lazy"
+      (function () {
+        var main = document.getElementById('main');
+        var widths = [640, 750, 828, 1080, 1200, 1920];
+        for (var i = 0; i < 30; i++) {
+          var s = document.createElement('section');
+          var h = document.createElement('h2');
+          h.textContent = 'Section ' + (i + 1);
+          var wrap = document.createElement('div');
+          wrap.className = 'wrap';
+          var img = document.createElement('img');
+          img.alt = 'Section ' + (i + 1);
+          img.src = 'https://picsum.photos/seed/crios-' + i + '/640/360';
+          var parts = [];
+          for (var j = 0; j < widths.length; j++) {
+            var w = widths[j];
+            var h2 = Math.round((w * 9) / 16);
+            parts.push('https://picsum.photos/seed/crios-' + i + '/' + w + '/' + h2 + ' ' + w + 'w');
+          }
+          img.srcset = parts.join(', ');
+          img.decoding = 'async';
+          img.loading = 'lazy';
+          wrap.appendChild(img);
+          s.appendChild(h);
+          s.appendChild(wrap);
+          main.appendChild(s);
+        }
+      })();
+    </script>
+  </body>
+</html>
