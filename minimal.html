@@ -36,7 +36,11 @@
         color: #e65100;
       }
 
-      /* Fixed bottom tabbar */
+      /* Fixed bottom tabbar
+         backdrop-filter + will-change promote this to its own compositor
+         layer, which appears to be required for the stale-snapshot bug to
+         be observable. Without any of these promotion triggers the element
+         is drawn into a parent layer and the bug cannot be seen. */
       .bar {
         position: fixed;
         bottom: 0;
@@ -44,7 +48,11 @@
         right: 0;
         z-index: 200;
         height: 64px;
-        background: #c8e6c9;
+        background: rgba(200, 230, 201, 0.85);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        will-change: transform, opacity;
+        transition: opacity 150ms ease;
         border-top: 3px solid #1b5e20;
         padding-bottom: env(safe-area-inset-bottom);
         display: flex;
